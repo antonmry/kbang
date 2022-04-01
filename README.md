@@ -1,7 +1,42 @@
+## Run it
 
-$ jbang -i Kafka.java
+Locally:
 
-See https://kafka.apache.org/31/documentation/streams/
+```bash
+jbang -i Kafka.java
+```
+
+Remotely:
+
+```bash
+jbang kafka@antonmry
+```
+
+## Create topics
+
+```java
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.common.config.TopicConfig;
+import kafka.*;
+
+var props = Kafka.getAdminConfig();
+var admin = Admin.create(props);
+
+var inputTopic = new NewTopic("streams-plaintext-input", 1, (short) 1);
+var result = admin.createTopics(Collections.singleton(inputTopic));
+result.values().get("streams-plaintext-input").get();
+
+var outputTopicConfig = Map.of(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+var outputTopic = new NewTopic("streams-wordcount-output", 1, (short) 1).configs(outputTopicConfig);
+var result = admin.createTopics(Collections.singleton(outputTopic));
+result.values().get("streams-wordcount-output").get();
+
+var r = admin.listTopics();
+System.out.println(r.names().get());
+```
+
+## Create the stream
 
 ```java
 
@@ -41,6 +76,67 @@ System.out.println(topology.describe());
 streams.start();
 streams.state();
 
-streams.close();
-
+//streams.close();
 ```
+
+## Consumer
+
+```java
+import kafka.*
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import java.time.Duration;
+
+var props = Kafka.getConsumerConfig()
+
+KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+consumer.subscribe(Arrays.asList("streams-wordcount-output"));
+
+while (true) {
+    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+    for (ConsumerRecord<String, String> record : records)
+        System.out.printf("offset = %d, key = %s, value = %s%n", record.offset(), record.key(), record.value());
+}
+```
+
+## Producer
+
+Run in a different `jshell`:
+
+```java
+import kafka.*
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
+var props = Kafka.getProducerConfig()
+Producer<String, String> producer = new KafkaProducer<>(props);
+
+var response = producer.send(new ProducerRecord<>("streams-plaintext-input", "Hello Kafka from jshell"));
+
+//producer.close();
+```
+
+## Execute the demo remotely
+
+```sh
+jbang alias add --name kafka https://github.com/antonmry/kbang/blob/HEAD/Kafka.java
+vi /Users/arodriguez/.jbang/jbang-catalog.json
+# Copy to https://github.com/antonmry/jbang-catalog
+jbang kafka@antonmry
+```
+
+## Other tools / resources
+
+https://kafka.apache.org/31/documentation/streams/
+https://github.com/jeqo/poc-apache-kafka/tree/main/cli
+https://github.com/eugenp/tutorials/tree/master/apache-kafka
+
+## Next steps:
+
+- [ ] Test E2E
+- [ ] Build a library and deploy it to jitpack? 
+- [x] Create the consumer from jshell
+- [x] Create topics from jshell
+- [x] Create producer from jshell
